@@ -2,7 +2,7 @@
 //import 
 import express from 'express';
 import mongoose from 'mongoose';
-import Messages,{Room} from './dbMessages.js';
+import Room from './dbMessages.js';
 import Pusher from 'pusher';
 import cors from 'cors';
 
@@ -23,6 +23,7 @@ mongoose.connect("mongodb+srv://admin-manas:atlas31@cluster0.vgb0t.mongodb.net/w
     useNewUrlParser:true,
     useUnifiedTopology:true
 });
+mongoose.set('useFindAndModify', false);
 
 const pusher = new Pusher({
     appId: "1213076",
@@ -36,65 +37,39 @@ const db=mongoose.connection;
 db.once("open",()=>{
     console.log("Db is connected");
 
-    const roomCollection=db.collection("roomschemas");
+    const roomCollection=db.collection("roomcollections");
     const changeStream2=roomCollection.watch();
-
-    const messageCollections=db.collection("messageschemas");  //mongoose automatically converts the name of the collection to plural with all lowercase
-    const changeStream=messageCollections.watch();
-
-    changeStream.on("change",(change)=>{
-        const details=change.fullDocument;
-        if(change.operationType==="insert")
-        {
-            pusher.trigger("messages","inserted",{
-                message:details.message,
-                name:details.name,
-                time:details.time,
-                received:details.received
-
-            });
-        }
-        else
-        {
-            console.log("Error Trigerring Pushern");
-        }
-    })
-
     changeStream2.on("change",(change)=>{
         const da=change.fullDocument;
         if(change.operationType==="insert")
         {
+            console.log(da);
             pusher.trigger("rooms","inserted",{
                 name:da.name,
+                _id:da._id
 
             });
+        }
+        else if(change.operationType==="update")
+        {
+            pusher.trigger("rooms","updated",{
+                messages:change.updateDescription.updatedFields,
+
+            });
+
         }
         else
         {
             console.log("Error Trigerring Pushern");
         }
     })
+   
 
 })
 
 
 
 
-app.get('/',function(req,res){
-    res.status(200).send("Hello");
-});
-
-app.get("/messages/sync",function(req,res){
-    Messages.find(function(err,data){
-        if(err)
-        {
-            res.status(500).send(err)
-        }
-        else{
-            res.status(200).send(data);
-        }
-    })
-})
 app.get("/room/sync",function(req,res){
     Room.find(function(err,data){
         if(err)
@@ -107,9 +82,8 @@ app.get("/room/sync",function(req,res){
     })
 })
 app.get("/roomname/:id",function(req,res){
-    console.log('Inside Id');
     const id=req.params.id;
-    console.log(id);
+
     Room.find({_id:id},function(err,data){
         if(err)
         {
@@ -121,19 +95,23 @@ app.get("/roomname/:id",function(req,res){
     })
 
 });
-
-app.post("/messages/new",function(req,res){
+app.post("/roomname/:id",function(req,res)
+{
     const ob=req.body;
-    Messages.create(ob,function(err,data){
+    const id=req.params.id;
+    console.log('Inside Id');
+    Room.findOneAndUpdate({_id:id},{$push:{messages:ob}},function(err,data){
         if(err)
         {
-            res.status(500).send(err);
+            res.status(500).send(err)
         }
         else{
+            
             res.status(200).send(data);
         }
-    })
-})
+    });
+    });
+
 app.post("/room",function(req,res){
     const ob=req.body;
     Room.create(ob,function(err,data){
